@@ -27,7 +27,7 @@
 
 ```bash
 # 下载脚本
-git clone git@github.com:Owenwoow/hy2-quick.git
+git clone https://github.com/Owenwoow/hy2-quick.git
 cd hy2-quick
 
 # 给脚本赋予执行权限
