@@ -27,7 +27,7 @@
 
 ```bash
 # 下载脚本
-git clone https://github.com/yourusername/hy2-quick.git
+git clone git@github.com:Owenwoow/hy2-quick.git
 cd hy2-quick
 
 # 给脚本赋予执行权限
@@ -192,4 +192,4 @@ A: 编辑 `/etc/hysteria/config.yaml` 中的 `listen` 参数，修改后需重�
 ---
 
 **更新日期**：2026-02-08  
-**维护者**：HY2-Quick Team
+**维护者**：Owen_W
