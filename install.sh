@@ -414,17 +414,17 @@ EOF
     echo -e "${GREEN}  ✅  Hysteria 2 部署完成${RESET}"
     echo -e "${GREEN}${border_line}${RESET}"
     echo
-    printf "  ${CYAN}%-18s${RESET}%s\n" "服务器 IP"  "${HOST}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "监听端口"  "${PORT}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "密码"      "${PASS}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "伪装网站"  "${FAKE_URL}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "节点名称"  "${NODE_NAME}"
+    echo -e "  ${CYAN}服务器 IP       ${RESET} ${HOST}"
+    echo -e "  ${CYAN}监听端口        ${RESET} ${PORT}"
+    echo -e "  ${CYAN}密码            ${RESET} ${PASS}"
+    echo -e "  ${CYAN}伪装网站        ${RESET} ${FAKE_URL}"
+    echo -e "  ${CYAN}节点名称        ${RESET} ${NODE_NAME}"
     if [[ "${ENABLE_MPORT}" == "yes" ]]; then
-        printf "  ${CYAN}%-18s${RESET}%s\n" "端口跳跃"  "${mport} → ${PORT}"
+        echo -e "  ${CYAN}端口跳跃        ${RESET} ${mport} → ${PORT}"
     fi
-    printf "  ${CYAN}%-18s${RESET}%s\n" "证书"      "/etc/hysteria/server.crt  (自签，insecure)"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "配置文件"  "/etc/hysteria/config.yaml"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "订阅链接"  "/etc/hysteria/link.bak"
+    echo -e "  ${CYAN}证书            ${RESET} /etc/hysteria/server.crt  (自签，insecure)"
+    echo -e "  ${CYAN}配置文件        ${RESET} /etc/hysteria/config.yaml"
+    echo -e "  ${CYAN}订阅链接        ${RESET} /etc/hysteria/link.bak"
     echo
     echo -e "  ${YELLOW}▶ 客户端连接 URI（复制后导入代理工具）：${RESET}"
     echo -e "  ${GREEN}${URI}${RESET}"
@@ -703,12 +703,12 @@ Quick_Install_Hy2() {
 
     echo
     echo -e "  ${CYAN}自动配置参数如下：${RESET}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "服务器 IP"  "${HOST}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "监听端口"  "${PORT}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "密码"      "${PASS}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "伪装网站"  "${FAKE_URL}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "节点名称"  "${NODE_NAME}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "端口跳跃"  "${mport} → ${PORT}"
+    echo -e "  ${CYAN}服务器 IP       ${RESET} ${HOST}"
+    echo -e "  ${CYAN}监听端口        ${RESET} ${PORT}"
+    echo -e "  ${CYAN}密码            ${RESET} ${PASS}"
+    echo -e "  ${CYAN}伪装网站        ${RESET} ${FAKE_URL}"
+    echo -e "  ${CYAN}节点名称        ${RESET} ${NODE_NAME}"
+    echo -e "  ${CYAN}端口跳跃        ${RESET} ${mport} → ${PORT}"
     echo
 
     # ---------- 安装 Hysteria 2 ----------
@@ -831,15 +831,15 @@ EOF
     echo -e "${GREEN}  ✅  Hysteria 2 快速安装完成${RESET}"
     echo -e "${GREEN}${border_line}${RESET}"
     echo
-    printf "  ${CYAN}%-18s${RESET}%s\n" "服务器 IP"  "${HOST}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "监听端口"  "${PORT}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "密码"      "${PASS}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "伪装网站"  "${FAKE_URL}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "节点名称"  "${NODE_NAME}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "端口跳跃"  "${mport} → ${PORT}"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "证书"      "/etc/hysteria/server.crt  (自签，insecure)"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "配置文件"  "/etc/hysteria/config.yaml"
-    printf "  ${CYAN}%-18s${RESET}%s\n" "订阅链接"  "/etc/hysteria/link.bak"
+    echo -e "  ${CYAN}服务器 IP       ${RESET} ${HOST}"
+    echo -e "  ${CYAN}监听端口        ${RESET} ${PORT}"
+    echo -e "  ${CYAN}密码            ${RESET} ${PASS}"
+    echo -e "  ${CYAN}伪装网站        ${RESET} ${FAKE_URL}"
+    echo -e "  ${CYAN}节点名称        ${RESET} ${NODE_NAME}"
+    echo -e "  ${CYAN}端口跳跃        ${RESET} ${mport} → ${PORT}"
+    echo -e "  ${CYAN}证书            ${RESET} /etc/hysteria/server.crt  (自签，insecure)"
+    echo -e "  ${CYAN}配置文件        ${RESET} /etc/hysteria/config.yaml"
+    echo -e "  ${CYAN}订阅链接        ${RESET} /etc/hysteria/link.bak"
     echo
     echo -e "  ${YELLOW}▶ 客户端连接 URI（复制后导入代理工具）：${RESET}"
     echo -e "  ${GREEN}${URI}${RESET}"
