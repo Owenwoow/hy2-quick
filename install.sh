@@ -140,18 +140,9 @@ dep_install() {
     log "缺少以下依赖：${missing_pkgs[*]}"
     echo ""
 
-    # 阶段 1：软件源索引缓存检测（1小时内更新过则跳过 update）
-    local apt_cache="/var/cache/apt/pkgcache.bin"
-    local cache_age=9999
-    if [[ -f "${apt_cache}" ]]; then
-        cache_age=$(( $(date +%s) - $(stat -c %Y "${apt_cache}") ))
-    fi
-    if [[ ${cache_age} -gt 3600 ]]; then
-        run_with_spinner ${TIMEOUT_APT_UPDATE} "更新软件源索引..." apt-get update \
-            || die "apt-get update 失败，请检查软件源或 dpkg 锁！"
-    else
-        echo -e "  ${GREEN}✔${RESET} 软件源索引有效（缓存命中，${cache_age}s 前更新），跳过 update"
-    fi
+    # 阶段 1：强制更新软件源索引
+    run_with_spinner ${TIMEOUT_APT_UPDATE} "更新软件源索引..." apt-get update \
+        || die "apt-get update 失败，请检查软件源或 dpkg 锁！"
 
     # 阶段 2：仅安装缺失的包，不安装推荐包
     run_with_spinner ${TIMEOUT_APT_INSTALL} "安装依赖包：${missing_pkgs[*]}..." \
@@ -413,15 +404,35 @@ EOF
     echo "${URI}" > /etc/hysteria/link.bak
     ok "订阅链接已保存到 /etc/hysteria/link.bak"
 
+    # ---------- 格式化展示安装结果 ----------
+    local term_width border_line
+    term_width=$(tput cols 2>/dev/null || echo 60)
+    border_line=$(printf '═%.0s' $(seq 1 "${term_width}"))
+
     echo
-    echo -e "${GREEN}========== 部署完成 ==========${RESET}"
-    echo -e "${YELLOW}请复制以下客户端连接 URI：${RESET}"
-    echo -e "${GREEN}${URI}${RESET}"
+    echo -e "${GREEN}${border_line}${RESET}"
+    echo -e "${GREEN}  ✅  Hysteria 2 部署完成${RESET}"
+    echo -e "${GREEN}${border_line}${RESET}"
     echo
-    echo -e "${CYAN}提示：${RESET}因使用自签证书，链接已包含 insecure=1 / allowInsecure=1。"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "服务器 IP"  "${HOST}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "监听端口"  "${PORT}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "密码"      "${PASS}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "伪装网站"  "${FAKE_URL}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "节点名称"  "${NODE_NAME}"
     if [[ "${ENABLE_MPORT}" == "yes" ]]; then
-        echo -e "${CYAN}提示：${RESET}已启用端口跳跃 mport=${mport}（UDP）-> ${PORT}。"
+        printf "  ${CYAN}%-18s${RESET}%s\n" "端口跳跃"  "${mport} → ${PORT}"
     fi
+    printf "  ${CYAN}%-18s${RESET}%s\n" "证书"      "/etc/hysteria/server.crt  (自签，insecure)"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "配置文件"  "/etc/hysteria/config.yaml"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "订阅链接"  "/etc/hysteria/link.bak"
+    echo
+    echo -e "  ${YELLOW}▶ 客户端连接 URI（复制后导入代理工具）：${RESET}"
+    echo -e "  ${GREEN}${URI}${RESET}"
+    echo
+    echo -e "  ${CYAN}🔗 项目地址：${RESET}https://github.com/Owenwoow/hy2-quick-install"
+    echo -e "  ${CYAN}🔗 Hysteria 2 官方文档：${RESET}https://v2.hysteria.network/"
+    echo
+    echo -e "${GREEN}${border_line}${RESET}"
 }
 
 
@@ -643,29 +654,200 @@ Clean_Iptables() {
 
 
 # ============================================================
-#  快速安装（跳过依赖安装步骤）
+#  快速安装（全自动，无交互，使用默认参数直接安装）
 # ============================================================
 Quick_Install_Hy2() {
-    local CONFIRM PASS PORT HOST FAKE_URL NODE_NAME ENABLE_MPORT mport
+    local PASS PORT HOST FAKE_URL NODE_NAME ENABLE_MPORT mport
 
-    # 检查服务是否存在
-    if [[ -f "/etc/systemd/system/hysteria-server.service" ]]; then
-        warn "检测到 Hysteria 2 服务已存在！"
-        safe_read CONFIRM "是否覆盖安装？(y/n, 默认: n): "
-        CONFIRM=${CONFIRM:-n}
-        if [[ "${CONFIRM}" != "y" ]]; then
-            log "已取消安装。"
-            return
-        fi
-    fi
+    local term_width border_line
+    term_width=$(tput cols 2>/dev/null || echo 60)
+    border_line=$(printf '─%.0s' $(seq 1 "${term_width}"))
 
-    warn "========== 快速安装模式 =========="
-    warn "请确保您已手动完成以下依赖的安装："
-    warn "  apt-get install -y curl wget openssl iptables iptables-persistent"
+    echo
+    echo -e "${CYAN}${border_line}${RESET}"
+    echo -e "${CYAN}  ⚡  快速安装模式 — 全自动，不进行自定义交互${RESET}"
+    echo -e "${CYAN}${border_line}${RESET}"
     echo
 
-    log "========== Hysteria 2 一键部署脚本（快速安装）=========="
-    _do_install_core
+    # ---------- 安装依赖（强制 update + 安装缺失包）----------
+    dep_install
+
+    # ---------- 验证关键依赖是否安装成功 ----------
+    log "校验关键依赖..."
+    local check_failed=0
+    for pkg in curl wget openssl iptables; do
+        if ! dpkg-query -W -f='${Status}' "${pkg}" 2>/dev/null | grep -q "install ok installed"; then
+            warn "依赖 ${pkg} 安装失败或未找到！"
+            check_failed=1
+        fi
+    done
+    if [[ ${check_failed} -eq 1 ]]; then
+        die "依赖校验未通过，请检查软件源后重试。"
+    fi
+    ok "所有关键依赖校验通过"
+    echo
+
+    # ---------- 自动生成所有参数（无需交互）----------
+    PASS="$(gen_pass_20)"
+    PORT=443
+    log "正在获取公网 IPv4..."
+    HOST="$(get_public_ipv4 2>/dev/null || true)"
+    [[ -z "${HOST}" ]] && die "无法自动获取公网 IP，请使用选项 1（安装 Hysteria 2）手动输入。"
+    FAKE_URL="https://www.bing.com"
+    NODE_NAME="hy2-$(printf "%04d" $((RANDOM % 10000)))"
+    mport="20000-20100"
+    ENABLE_MPORT="yes"
+    local mport_start mport_end
+    mport_start="${mport%-*}"
+    mport_end="${mport#*-}"
+
+    echo
+    echo -e "  ${CYAN}自动配置参数如下：${RESET}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "服务器 IP"  "${HOST}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "监听端口"  "${PORT}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "密码"      "${PASS}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "伪装网站"  "${FAKE_URL}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "节点名称"  "${NODE_NAME}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "端口跳跃"  "${mport} → ${PORT}"
+    echo
+
+    # ---------- 安装 Hysteria 2 ----------
+    log "下载 Hysteria 2 安装脚本..."
+    timeout ${TIMEOUT_CURL_DOWNLOAD} curl -fsSL https://get.hy2.sh/ -o /tmp/hy2_install.sh \
+        || die "下载 Hysteria 2 安装脚本超时（${TIMEOUT_CURL_DOWNLOAD}s），请检查网络！"
+    run_with_spinner ${TIMEOUT_HY2_INSTALL} "安装 Hysteria 2（官方脚本）..." \
+        bash /tmp/hy2_install.sh \
+        || die "Hysteria 2 安装失败！请检查网络连接。"
+    rm -f /tmp/hy2_install.sh
+    ok "Hysteria 2 安装完成"
+
+    # ---------- 验证 hysteria 二进制是否存在 ----------
+    if ! command -v hysteria >/dev/null 2>&1; then
+        die "Hysteria 2 安装后未找到可执行文件，请手动排查！"
+    fi
+    ok "hysteria 二进制校验通过：$(command -v hysteria)"
+
+    # ---------- 生成自签证书 ----------
+    log "生成自签证书（CN=bing.com，有效期100年）..."
+    install -d -m 0755 /etc/hysteria
+    openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
+        -keyout /etc/hysteria/server.key \
+        -out    /etc/hysteria/server.crt \
+        -subj   "/CN=bing.com" \
+        -days   36500 >/dev/null 2>&1
+    if id -u hysteria >/dev/null 2>&1; then
+        chown hysteria:hysteria /etc/hysteria/server.key /etc/hysteria/server.crt
+    else
+        chmod 600 /etc/hysteria/server.key
+        chmod 644 /etc/hysteria/server.crt
+    fi
+    ok "证书生成完成"
+
+    # ---------- sysctl 优化 ----------
+    cat > /etc/sysctl.d/99-hy2.conf <<'SYSCTL'
+net.core.rmem_max=16777216
+SYSCTL
+    sysctl --system > /dev/null
+    ok "sysctl 已生效"
+
+    # ---------- 写入配置文件 ----------
+    log "写入 /etc/hysteria/config.yaml..."
+    cat > /etc/hysteria/config.yaml <<EOF
+listen: :${PORT}
+
+tls:
+  cert: /etc/hysteria/server.crt
+  key: /etc/hysteria/server.key
+
+auth:
+  type: password
+  password: ${PASS}
+
+masquerade:
+  type: proxy
+  proxy:
+    url: ${FAKE_URL}
+    rewriteHost: true
+
+ignoreClientBandwidth: false
+EOF
+    ok "配置文件写入完成"
+
+    # ---------- iptables 端口跳跃 ----------
+    local IFACE
+    IFACE="$(get_default_iface || true)"
+    [[ -n "${IFACE}" ]] && ok "检测到主网卡：${IFACE}"
+    local ipt_range
+    ipt_range="$(echo "${mport}" | tr '-' ':')"
+    log "配置 iptables：UDP ${mport} 重定向到 ${PORT}..."
+    if iptables -t nat -C PREROUTING -p udp --dport "${ipt_range}" -j REDIRECT --to-ports "${PORT}" >/dev/null 2>&1; then
+        ok "iptables 规则已存在，跳过添加"
+    else
+        iptables -t nat -A PREROUTING -p udp --dport "${ipt_range}" -j REDIRECT --to-ports "${PORT}"
+        ok "iptables 规则添加完成"
+    fi
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+        netfilter-persistent save > /dev/null
+        ok "规则已持久化（netfilter-persistent）"
+    elif [[ -d /etc/iptables ]]; then
+        iptables-save > /etc/iptables/rules.v4
+        ok "规则已保存到 /etc/iptables/rules.v4"
+    fi
+
+    # ---------- 服务管理 ----------
+    local SERVICE_NAME="hysteria-server.service"
+    local SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
+    if [[ ! -f "${SERVICE_PATH}" ]]; then
+        if ! systemctl list-unit-files | grep -qE '^hysteria-server\.service'; then
+            die "未检测到 hysteria-server.service，请确认官方安装脚本是否成功创建 systemd unit"
+        fi
+    fi
+    log "设置 ${SERVICE_NAME} 开机自启并立即启动..."
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl restart "${SERVICE_NAME}" >/dev/null 2>&1 || true
+    systemctl enable --now "${SERVICE_NAME}" >/dev/null
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+        ok "${SERVICE_NAME} 服务已启动"
+    else
+        warn "${SERVICE_NAME} 未处于 active 状态："
+        systemctl status "${SERVICE_NAME}" --no-pager || true
+        die "服务启动失败，请检查日志：journalctl -u ${SERVICE_NAME} -e --no-pager"
+    fi
+
+    # ---------- 生成客户端 URI ----------
+    local ENC_NODE URI
+    ENC_NODE="$(urlencode_fragment "${NODE_NAME}")"
+    URI="hysteria2://${PASS}@${HOST}:${PORT}?sni=www.bing.com&insecure=1&allowInsecure=1&mport=${mport}#${ENC_NODE}"
+
+    install -d -m 0755 /etc/hysteria
+    echo "${URI}" > /etc/hysteria/link.bak
+    ok "订阅链接已保存到 /etc/hysteria/link.bak"
+
+    # ---------- 格式化展示安装结果 ----------
+    term_width=$(tput cols 2>/dev/null || echo 60)
+    border_line=$(printf '═%.0s' $(seq 1 "${term_width}"))
+    echo
+    echo -e "${GREEN}${border_line}${RESET}"
+    echo -e "${GREEN}  ✅  Hysteria 2 快速安装完成${RESET}"
+    echo -e "${GREEN}${border_line}${RESET}"
+    echo
+    printf "  ${CYAN}%-18s${RESET}%s\n" "服务器 IP"  "${HOST}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "监听端口"  "${PORT}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "密码"      "${PASS}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "伪装网站"  "${FAKE_URL}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "节点名称"  "${NODE_NAME}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "端口跳跃"  "${mport} → ${PORT}"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "证书"      "/etc/hysteria/server.crt  (自签，insecure)"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "配置文件"  "/etc/hysteria/config.yaml"
+    printf "  ${CYAN}%-18s${RESET}%s\n" "订阅链接"  "/etc/hysteria/link.bak"
+    echo
+    echo -e "  ${YELLOW}▶ 客户端连接 URI（复制后导入代理工具）：${RESET}"
+    echo -e "  ${GREEN}${URI}${RESET}"
+    echo
+    echo -e "  ${CYAN}🔗 项目地址：${RESET}https://github.com/Owenwoow/hy2-quick-install"
+    echo -e "  ${CYAN}🔗 Hysteria 2 官方文档：${RESET}https://v2.hysteria.network/"
+    echo
+    echo -e "${GREEN}${border_line}${RESET}"
 }
 
 
@@ -694,11 +876,11 @@ menu() {
         echo -e "${CYAN}  项目: https://github.com/Owenwoow/hy2-quick-install${RESET}"
         echo -e "${CYAN}${border}${RESET}"
         echo ""
-        echo "  1) 安装 Hysteria 2"
+        echo "  1) 自定义安装"
         echo "  2) 卸载/环境清理"
-        echo "  3) 清理端口跳跃规则 (iptables)"
+        echo "  3) 清理端口跳跃规则"
         echo "  4) 读取订阅链接"
-        echo "  5) 快速安装（请手动完成依赖部分的安装）"
+        echo "  5) 快速安装"
         echo "  0) 退出脚本"
         echo ""
         echo -e "${CYAN}${border}${RESET}"
