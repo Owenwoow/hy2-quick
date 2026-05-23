@@ -862,6 +862,18 @@ menu() {
         Uninstall_Hy2
         exit 0
         ;;
+    --quick|--fast)
+        Quick_Install_Hy2
+        exit 0
+        ;;
+    --link|--info)
+        Read_Link
+        exit 0
+        ;;
+    --clean)
+        Clean_Iptables
+        exit 0
+        ;;
     esac
 
     # 菜单触发（交互使用）

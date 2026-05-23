@@ -146,10 +146,23 @@ bash install.sh
 
 ## 🔧 高级：命令行参数
 
-脚本支持非交互式直接调用：
+脚本支持非交互式直接调用，方便配合自动化工具或脚本使用：
 
 ```bash
-# 快速卸载并清理
+# 快速全自动静默安装
+bash install.sh --quick
+# 或
+bash install.sh --fast
+
+# 读取已保存的订阅链接
+bash install.sh --link
+# 或
+bash install.sh --info
+
+# 单独清理 iptables 端口跳跃规则
+bash install.sh --clean
+
+# 快速卸载并清理环境
 bash install.sh --remove
 # 或
 bash install.sh --uninstall
