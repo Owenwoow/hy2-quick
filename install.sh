@@ -9,7 +9,7 @@ set -euo pipefail
 # 自签证书仅用于快速安装与无域名场景，客户端兼容性有限。
 # ============================================================
 
-SCRIPT_VERSION="2.2"
+SCRIPT_VERSION="2.3"
 REPO_URL="https://github.com/Owenwoow/hy2-quick-install"
 RAW_URL="https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/main/install.sh"
 CLI_NAME="hy2"
@@ -356,7 +356,8 @@ get_public_ipv4() {
     local ip="" src
     for src in https://api.ip.sb/ip https://api4.ipify.org https://ifconfig.me; do
         ip="$(curl -4 -s --max-time 5 "${src}" 2>/dev/null || true)"
-        [[ "${ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && { echo "${ip}"; return 0; }
+        # 同理：不匹配时 && 返回 1，而它是循环体最后一条，for 会以非零收尾
+        if [[ "${ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then echo "${ip}"; return 0; fi
     done
     echo ""
 }
@@ -675,7 +676,8 @@ choose_cert_mode() {
             while [[ -z "${token}" ]]; do
                 safe_read token "Cloudflare API Token（需 Zone:DNS:Edit 权限）： " || continue 2
                 token="${token// /}"
-                [[ -z "${token}" ]] && warn "API Token 不能为空"
+                # 同理：输入有效 Token 时条件为假，&& 返回 1 会让 while 以非零收尾
+                if [[ -z "${token}" ]]; then warn "API Token 不能为空"; fi
             done
             CF_TOKEN="${token}"
             HOST="${DOMAIN}"; SNI="${DOMAIN}"
@@ -749,25 +751,73 @@ install_hysteria_core() {
 }
 
 # 把脚本自身安装为 hy2 命令，之后可随时呼出管理面板
-install_cli_shortcut() {
-    local src=""
+# 把脚本自身安装为 hy2 命令。幂等，每次启动都会调用一次：
+# 不能只在安装成功后才装，否则用旧版脚本部署过的用户升级后拿不到 hy2，
+# 还得重装一遍节点才能用上快捷命令。
+#
+# $1 = quiet 时全程静默（用于每次启动的自动补齐），结果由菜单状态区呈现。
+ensure_cli_shortcut() {
+    local mode="${1:-verbose}" src="" tmp err rc=0
 
-    # 通过 bash <(curl ...) 运行时 BASH_SOURCE 指向管道，需重新下载
+    install -d -m 0755 "$(dirname "${CLI_PATH}")" 2>/dev/null || true
+
+    # 通过 bash <(curl ...) 运行时 BASH_SOURCE 指向管道，-f 判定为假，走下载分支
     if [[ -f "${BASH_SOURCE[0]}" ]]; then
-        src="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+        src="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
+    fi
+
+    # 当前跑的就是已安装的 hy2，无需自我覆盖
+    [[ -n "${src}" && "${src}" == "${CLI_PATH}" ]] && return 0
+
+    # 已安装且内容一致，跳过，避免每次启动都刷提示
+    if [[ -n "${src}" && -f "${src}" && -f "${CLI_PATH}" ]] && cmp -s "${src}" "${CLI_PATH}"; then
+        return 0
     fi
 
     if [[ -n "${src}" && -f "${src}" ]]; then
-        if [[ "${src}" != "${CLI_PATH}" ]]; then
-            install -m 0755 "${src}" "${CLI_PATH}" 2>/dev/null || { warn "写入 ${CLI_PATH} 失败"; return 0; }
+        # 本地文件执行：直接复制
+        err="$(install -m 0755 "${src}" "${CLI_PATH}" 2>&1)" || rc=$?
+        if (( rc != 0 )); then
+            if [[ "${mode}" != "quiet" ]]; then
+                warn "写入 ${CLI_PATH} 失败"
+                if [[ -n "${err}" ]]; then note "${err}"; fi
+            fi
+            return 1
         fi
     else
-        timeout "${TIMEOUT_CURL_DOWNLOAD}" curl -fsSL "${RAW_URL}" -o "${CLI_PATH}" 2>/dev/null \
-            || { warn "下载脚本到 ${CLI_PATH} 失败，跳过快捷命令安装"; return 0; }
-        chmod 0755 "${CLI_PATH}"
+        # 管道执行：重新下载，先落到临时文件校验，避免把错误页面装成命令
+        tmp="/tmp/hy2_cli_$$.sh"
+        err="$(timeout "${TIMEOUT_CURL_DOWNLOAD}" curl -fsSL "${RAW_URL}" -o "${tmp}" 2>&1)" || rc=$?
+        if (( rc != 0 )); then
+            rm -f "${tmp}"
+            if [[ "${mode}" != "quiet" ]]; then
+                warn "下载脚本失败，跳过快捷命令安装"
+                if [[ -n "${err}" ]]; then note "${err}"; fi
+            fi
+            return 1
+        fi
+        if ! head -1 "${tmp}" 2>/dev/null | grep -q '^#!/bin/bash' || ! bash -n "${tmp}" 2>/dev/null; then
+            rm -f "${tmp}"
+            [[ "${mode}" != "quiet" ]] && warn "下载内容不是有效脚本，跳过快捷命令安装"
+            return 1
+        fi
+        err="$(install -m 0755 "${tmp}" "${CLI_PATH}" 2>&1)" || rc=$?
+        rm -f "${tmp}"
+        if (( rc != 0 )); then
+            if [[ "${mode}" != "quiet" ]]; then
+                warn "写入 ${CLI_PATH} 失败"
+                if [[ -n "${err}" ]]; then note "${err}"; fi
+            fi
+            return 1
+        fi
     fi
 
-    ok "快捷命令已安装  输入 ${C_BOLD}${CLI_NAME}${C_RESET} 即可再次打开管理面板"
+    # quiet 模式完全静默：菜单随后会 clear 屏幕，这行提示留不住，
+    # 快捷命令是否可用改由菜单状态区常驻显示
+    if [[ "${mode}" != "quiet" ]]; then
+        ok "快捷命令已安装  输入 ${CLI_NAME} 可再次打开管理面板"
+    fi
+    return 0
 }
 
 setup_sysctl() {
@@ -1098,7 +1148,7 @@ finalize_install() {
     setup_sysctl
     write_config
     setup_port_hopping
-    install_cli_shortcut
+    ensure_cli_shortcut || true
 
     step "启动服务"
     start_service
@@ -1214,7 +1264,9 @@ Quick_Install_Hy2() {
         fi
     else
         HOST="$(get_public_ipv4 2>/dev/null || true)"
-        [[ -z "${HOST}" ]] && die "无法自动获取公网 IP，请改用自定义安装"
+        # 用 if 而非 [[ ]] && die：成功取到 IP 时条件为假，&& 返回 1，
+        # 而它是 else 块的最后一条语句，整个 if 会以非零收尾并被 set -e 判定为失败
+        if [[ -z "${HOST}" ]]; then die "无法自动获取公网 IP，请改用自定义安装"; fi
     fi
 
     [[ -n "${ARG_CA}" ]] && CA_PROVIDER="${ARG_CA}"
@@ -1288,7 +1340,9 @@ Read_Link() {
             HOST="$(get_public_ipv4 2>/dev/null || true)"
             if [[ -z "${HOST}" ]]; then
                 safe_read HOST "自动获取公网 IP 失败，请手动输入： " || return 0
-                [[ -z "${HOST}" ]] && die "公网 IP 不能为空"
+                # 用 if 而非 [[ ]] && die：条件为假时 && 会返回 1，
+                # 而它是 if 块的最后一条语句，set -e 会据此终止整个脚本
+                if [[ -z "${HOST}" ]]; then die "公网 IP 不能为空"; fi
             fi
             warn "自签证书，链接将附带 insecure=1 与 pinSHA256"
         else
@@ -1572,6 +1626,16 @@ status_line() {
     return 0
 }
 
+# 快捷命令是否可用。补齐动作是静默的，这里让用户随时能确认
+cli_status_line() {
+    if [[ -x "${CLI_PATH}" ]]; then
+        printf '%s%s%s' "${C_GREEN}" "${CLI_NAME}" "${C_RESET}"
+    else
+        printf '%s[不可用]%s' "${C_GRAY}" "${C_RESET}"
+    fi
+    return 0
+}
+
 menu() {
     local choice
 
@@ -1581,6 +1645,7 @@ menu() {
         ui_header "Hysteria 2 一键部署脚本" "v${SCRIPT_VERSION}"
         echo
         ui_kv "当前状态" "$(status_line)"
+        ui_kv "快捷命令" "$(cli_status_line)"
         echo
         ui_item "1" "自定义安装" "选择证书方式，逐项配置"
         ui_item "2" "快速安装"   "自签证书，全自动无交互"
@@ -1619,6 +1684,12 @@ main() {
     ui_init
     parse_args "$@"
     check_root
+
+    # 每次运行都补齐 hy2 快捷命令：用旧版脚本部署过的用户升级后无需重装即可用上。
+    # 卸载动作除外——否则会先装一遍再删掉。失败不影响主流程，忽略返回值。
+    if [[ "${ACTION}" != "remove" ]]; then
+        ensure_cli_shortcut quiet || true
+    fi
 
     case "${ACTION}" in
     quick)  Quick_Install_Hy2; exit 0 ;;

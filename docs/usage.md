@@ -146,7 +146,7 @@ iptables -t nat -A PREROUTING -p udp --dport 20000:20100 -j REDIRECT --to-ports 
 | `/etc/hysteria/config.yaml` | 服务端配置 |
 | `/etc/hysteria/link.bak` | 客户端订阅链接 |
 | `/var/lib/hysteria/acme/` | ACME 证书与账户密钥 |
-| `/usr/local/bin/hy2` | 管理面板快捷命令 |
+| `/usr/local/bin/hy2` | 管理面板快捷命令，每次运行脚本时自动补齐 |
 | `/etc/sysctl.d/99-hy2.conf` | UDP 缓冲区优化 |
 
 卸载（菜单 `6` 或 `hy2 --remove`）会清理以上全部内容。

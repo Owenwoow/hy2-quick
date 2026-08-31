@@ -18,7 +18,7 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/main/install.sh)
 ```
 
-装完后，以后直接输入 `hy2` 就能再次打开管理面板。
+装完后，以后直接输入 `hy2` 就能再次打开管理面板。脚本每次运行都会自动补齐这个命令，所以用旧版脚本部署过的机器，跑一次新脚本即可获得 `hy2`，不必重装节点。
 
 > 请用 `bash <(curl ...)`，不要用 `curl ... | bash` —— 后者会占用标准输入，脚本无法交互。
 
@@ -31,10 +31,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/m
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Hysteria 2 一键部署脚本                              v2.2 │
+│ Hysteria 2 一键部署脚本                              v2.3 │
 └──────────────────────────────────────────────────────────┘
 
   当前状态      [运行中]
+  快捷命令      hy2
 
   1  自定义安装    选择证书方式，逐项配置
   2  快速安装      自签证书，全自动无交互
