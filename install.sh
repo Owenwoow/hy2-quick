@@ -9,7 +9,7 @@ set -euo pipefail
 # 自签证书仅用于快速安装与无域名场景，客户端兼容性有限。
 # ============================================================
 
-SCRIPT_VERSION="2.0"
+SCRIPT_VERSION="2.1"
 REPO_URL="https://github.com/Owenwoow/hy2-quick-install"
 RAW_URL="https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/main/install.sh"
 CLI_NAME="hy2"
@@ -199,6 +199,21 @@ step() { echo -e "\n  ${C_CYAN}▸${C_RESET}  ${C_BOLD}$*${C_RESET}"; }
 #  输入层
 # ============================================================
 
+# 用户在任意输入处键入 b / back / 返回 时，输入函数返回 1，
+# 由调用方决定回退到哪一层。所有交互函数都遵循这个约定：
+#   返回 0 = 取得有效输入；返回 1 = 用户要求返回上一级
+is_back_cmd() {
+    case "$1" in
+        b|B|back|BACK|Back|返回) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# 在小节开头提示一次返回方式，避免每个提示符都重复啰嗦
+back_hint() {
+    note "输入 ${C_BOLD}b${C_RESET}${C_GRAY} 可返回上一级"
+}
+
 # 读取一行输入。无终端或输入流结束时不会陷入死循环：
 # 连续 3 次读到 EOF 即判定为非交互环境并中止，提示正确的运行方式。
 # 内部变量统一加 __sr_ 前缀：bash 是动态作用域，若与调用方的局部变量重名，
@@ -222,23 +237,28 @@ safe_read() {
         fi
     fi
 
+    # 返回指令不写入目标变量，直接以返回 1 通知调用方回退
+    if is_back_cmd "${__sr_value}"; then
+        return 1
+    fi
+
     printf -v "${__sr_name}" '%s' "${__sr_value}"
     return 0
 }
 
-# 带默认值的输入：提示里显示默认值，直接回车即采用
+# 带默认值的输入：提示里显示默认值，直接回车即采用。返回 1 表示用户要返回上一级
 ask_default() {
     local __ad_name="$1" __ad_label="$2" __ad_default="$3" __ad_value=""
-    safe_read __ad_value "${__ad_label} ${C_GRAY}[${__ad_default}]${C_RESET} "
+    safe_read __ad_value "${__ad_label} ${C_GRAY}[${__ad_default}]${C_RESET} " || return 1
     printf -v "${__ad_name}" '%s' "${__ad_value:-${__ad_default}}"
     return 0
 }
 
-# 是 / 否 询问，$3 为默认值（y 或 n）
+# 是 / 否 询问，$2 为默认值（y 或 n）。输入 b 等同于「否」
 ask_yes_no() {
     local label="$1" default="${2:-y}" input="" hint
     if [[ "${default}" == "y" ]]; then hint="Y/n"; else hint="y/N"; fi
-    safe_read input "${label} ${C_GRAY}[${hint}]${C_RESET} "
+    safe_read input "${label} ${C_GRAY}[${hint}]${C_RESET} " || return 1
     input="${input:-${default}}"
     [[ "${input}" == "y" || "${input}" == "Y" ]]
 }
@@ -247,7 +267,7 @@ ask_yes_no() {
 ui_pause() {
     local _discard=""
     echo
-    safe_read _discard "${C_GRAY}按 Enter 返回主菜单${C_RESET}"
+    safe_read _discard "${C_GRAY}按 Enter 返回主菜单${C_RESET}" || true
     return 0
 }
 
@@ -488,7 +508,7 @@ dep_install() {
 ask_domain() {
     local input
     while true; do
-        safe_read input "请输入已解析到本机的域名（如 hy2.example.com）： "
+        safe_read input "请输入已解析到本机的域名（如 hy2.example.com）： " || return 1
         input="${input// /}"
         if [[ -z "${input}" ]]; then
             warn "ACME 申请证书必须提供域名"
@@ -507,7 +527,7 @@ ask_domain() {
 ask_email() {
     local input
     while true; do
-        ask_default input "ACME 联系邮箱：" "admin@${DOMAIN}"
+        ask_default input "ACME 联系邮箱：" "admin@${DOMAIN}" || return 1
         if ! validate_email "${input}"; then
             warn "邮箱格式不合法：${input}"
             continue
@@ -601,27 +621,31 @@ choose_cert_mode() {
         ui_item "2" "ACME · DNS"   "Cloudflare API Token，无需 80 端口"
         ui_item "3" "已有证书"     "自行上传或 acme.sh 等工具签发"
         ui_item "4" "自签证书"     "无域名时的兜底，客户端兼容性有限"
+        ui_item "b" "返回"         "回到主菜单"
         echo
-        ask_default choice "请选择 [1-4]：" "1"
+        # 这一级是本流程的顶层，输入 b 即返回主菜单
+        ask_default choice "请选择 [1-4]：" "1" || return 1
 
         case "${choice}" in
         1)
             CERT_MODE="acme-http"
-            ask_domain
-            ask_email
+            back_hint
+            ask_domain || continue
+            ask_email  || continue
             precheck_acme_http || continue
             HOST="${DOMAIN}"; SNI="${DOMAIN}"
             return 0
             ;;
         2)
             CERT_MODE="acme-dns-cf"
-            ask_domain
-            ask_email
-            while true; do
-                safe_read token "Cloudflare API Token（需 Zone:DNS:Edit 权限）： "
+            back_hint
+            ask_domain || continue
+            ask_email  || continue
+            token=""
+            while [[ -z "${token}" ]]; do
+                safe_read token "Cloudflare API Token（需 Zone:DNS:Edit 权限）： " || continue 2
                 token="${token// /}"
-                [[ -n "${token}" ]] && break
-                warn "API Token 不能为空"
+                [[ -z "${token}" ]] && warn "API Token 不能为空"
             done
             CF_TOKEN="${token}"
             HOST="${DOMAIN}"; SNI="${DOMAIN}"
@@ -630,21 +654,22 @@ choose_cert_mode() {
             ;;
         3)
             CERT_MODE="manual"
+            back_hint
             while true; do
-                safe_read c "证书文件（.crt/.pem）绝对路径： "
+                safe_read c "证书文件（.crt/.pem）绝对路径： " || continue 2
                 if [[ -f "${c}" ]] && openssl x509 -in "${c}" -noout >/dev/null 2>&1; then
                     break
                 fi
                 warn "文件不存在或不是有效的 X.509 证书"
             done
             while true; do
-                safe_read k "私钥文件（.key）绝对路径： "
+                safe_read k "私钥文件（.key）绝对路径： " || continue 2
                 [[ -f "${k}" ]] && break
                 warn "文件不存在：${k}"
             done
             CERT_PATH="${c}"; KEY_PATH="${k}"
             cert_dom="$(cert_first_domain "${CERT_PATH}")"
-            ask_default input "客户端连接使用的域名：" "${cert_dom:-}"
+            ask_default input "客户端连接使用的域名：" "${cert_dom:-}" || continue
             DOMAIN="${input}"
             if validate_domain "${DOMAIN}"; then
                 HOST="${DOMAIN}"; SNI="${DOMAIN}"
@@ -945,7 +970,7 @@ print_result() {
 
 ask_password() {
     local input
-    safe_read input "连接密码（回车 = 随机生成 20 位）： "
+    safe_read input "连接密码（回车 = 随机生成 20 位）： " || return 1
     if [[ -z "${input}" ]]; then
         PASS="$(gen_pass_20)"
         ok "已生成随机密码  ${PASS}"
@@ -959,7 +984,7 @@ ask_password() {
 ask_port() {
     local input
     while true; do
-        ask_default input "监听端口：" "443"
+        ask_default input "监听端口：" "443" || return 1
         PORT="${input}"
         if ! validate_port "${PORT}"; then
             warn "端口必须是 1-65535 之间的数字"
@@ -979,10 +1004,10 @@ ask_public_ip() {
     log "获取公网 IPv4..."
     auto_ip="$(get_public_ipv4 2>/dev/null || true)"
     if [[ -n "${auto_ip}" ]]; then
-        ask_default input "服务器公网 IP：" "${auto_ip}"
+        ask_default input "服务器公网 IP：" "${auto_ip}" || return 1
         HOST="${input}"
     else
-        safe_read input "自动获取失败，请手动输入服务器公网 IP： "
+        safe_read input "自动获取失败，请手动输入服务器公网 IP： " || return 1
         [[ -z "${input}" ]] && die "公网 IP 不能为空"
         HOST="${input}"
     fi
@@ -991,14 +1016,14 @@ ask_public_ip() {
 }
 
 ask_masquerade() {
-    ask_default FAKE_URL "伪装网站：" "https://www.bing.com"
+    ask_default FAKE_URL "伪装网站：" "https://www.bing.com" || return 1
     ok "伪装网站  ${FAKE_URL}"
     return 0
 }
 
 ask_node_name() {
     local input
-    ask_default input "节点名称：" "hy2-$(printf '%04d' $(( RANDOM % 10000 )))"
+    ask_default input "节点名称：" "hy2-$(printf '%04d' $(( RANDOM % 10000 )))" || return 1
     NODE_NAME="${input}"
     ok "节点名称  ${NODE_NAME}"
     return 0
@@ -1012,7 +1037,7 @@ ask_port_hopping() {
         return 0
     fi
     while true; do
-        ask_default input "跳跃范围：" "20000-20100"
+        ask_default input "跳跃范围：" "20000-20100" || return 1
         MPORT="${input}"
         validate_mport "${MPORT}" || continue
         ENABLE_MPORT="yes"
@@ -1056,20 +1081,58 @@ finalize_install() {
 # ============================================================
 #  1) 自定义安装
 # ============================================================
+
+# 基础参数收集：做成可回退的步骤机，任一步输入 b 都退回上一个问题，
+# 在第一个问题上再输入 b 则返回 1，由调用方退回到证书方式选择。
+collect_params() {
+    # $1：是否需要询问公网 IP。必须由调用方一次性判定并传入——
+    # 不能在循环里用 [[ -z "${HOST}" ]] 判断，否则回退到第一步时 HOST 已被填上，
+    # 条件不再成立，这一步会被直接跳过，回退等于失效。
+    local need_ip="$1" stage=1
+
+    while true; do
+        case ${stage} in
+        1)
+            if (( need_ip == 0 )); then
+                stage=2; continue
+            fi
+            ask_public_ip || return 1
+            ;;
+        2) ask_password     || { stage=1; continue; } ;;
+        3) ask_port         || { stage=2; continue; } ;;
+        4) ask_masquerade   || { stage=3; continue; } ;;
+        5) ask_node_name    || { stage=4; continue; } ;;
+        6) ask_port_hopping || { stage=5; continue; } ;;
+        *) return 0 ;;
+        esac
+        stage=$(( stage + 1 ))
+    done
+}
+
 Install_Hy2() {
     ui_section "自定义安装"
     confirm_overwrite || return 0
 
     dep_install
-    choose_cert_mode
 
-    ui_section "基础参数"
-    [[ -z "${HOST}" ]] && ask_public_ip
-    ask_password
-    ask_port
-    ask_masquerade
-    ask_node_name
-    ask_port_hopping
+    # 两级流程：证书方式 ⇄ 基础参数，任一级都能退回上一级或主菜单
+    local need_ip
+    while true; do
+        choose_cert_mode || return 0        # 在证书方式选择处返回 = 回主菜单
+
+        # 自签 / 未确定域名时才需要询问公网 IP；ACME 模式下连接地址就是域名
+        need_ip=0
+        [[ -z "${HOST}" ]] && need_ip=1
+
+        ui_section "基础参数"
+        back_hint
+        if collect_params "${need_ip}"; then
+            break
+        fi
+        # 基础参数第一项再按 b：清空证书选择，回到证书方式菜单
+        CERT_MODE=""; DOMAIN=""; EMAIL=""; CF_TOKEN=""
+        CERT_PATH=""; KEY_PATH=""; PIN_SHA256=""; HOST=""; SNI=""
+    done
 
     install_hysteria_core
     finalize_install "部署完成"
@@ -1192,7 +1255,7 @@ Read_Link() {
             PIN_SHA256="$(cert_sha256_pin "${CERT_PATH}")"
             HOST="$(get_public_ipv4 2>/dev/null || true)"
             if [[ -z "${HOST}" ]]; then
-                safe_read HOST "自动获取公网 IP 失败，请手动输入： "
+                safe_read HOST "自动获取公网 IP 失败，请手动输入： " || return 0
                 [[ -z "${HOST}" ]] && die "公网 IP 不能为空"
             fi
             warn "自签证书，链接将附带 insecure=1 与 pinSHA256"
@@ -1250,7 +1313,7 @@ Clean_Iptables() {
     echo
 
     local input
-    safe_read input "输入要删除的行号（空格分隔 / all 全删 / 回车跳过）： "
+    safe_read input "输入要删除的行号（空格分隔 / all 全删 / 回车跳过）： " || return 0
     if [[ -z "${input}" ]]; then
         log "未删除任何规则"
         return 0
@@ -1288,7 +1351,63 @@ Clean_Iptables() {
 
 
 # ============================================================
-#  5) 卸载与环境清理
+#  5) 更新脚本
+# ============================================================
+Update_Script() {
+    ui_section "更新脚本"
+
+    local tmp="/tmp/hy2_update_$$.sh" new_ver
+
+    log "从 GitHub 拉取最新版本..."
+    if ! timeout "${TIMEOUT_CURL_DOWNLOAD}" curl -fsSL "${RAW_URL}" -o "${tmp}" 2>/dev/null; then
+        rm -f "${tmp}"
+        warn "下载失败，请检查网络或稍后重试"
+        return 0
+    fi
+
+    # 覆盖前先校验：必须是可执行的 bash 脚本，避免把错误页面写进 hy2
+    if ! head -1 "${tmp}" | grep -q '^#!/bin/bash' || ! bash -n "${tmp}" 2>/dev/null; then
+        rm -f "${tmp}"
+        warn "下载内容不是有效的脚本，已放弃更新"
+        return 0
+    fi
+
+    new_ver="$(grep -m1 '^SCRIPT_VERSION=' "${tmp}" | cut -d'"' -f2)"
+    echo
+    ui_kv "当前版本" "${SCRIPT_VERSION}"
+    ui_kv "最新版本" "${new_ver:-未知}"
+    echo
+
+    if [[ -n "${new_ver}" && "${new_ver}" == "${SCRIPT_VERSION}" ]]; then
+        ok "已是最新版本"
+        if ! ask_yes_no "仍要强制覆盖？" "n"; then
+            rm -f "${tmp}"
+            return 0
+        fi
+    elif ! ask_yes_no "确认更新到 ${new_ver:-最新版}？" "y"; then
+        rm -f "${tmp}"
+        log "已取消更新"
+        return 0
+    fi
+
+    if ! install -m 0755 "${tmp}" "${CLI_PATH}" 2>/dev/null; then
+        rm -f "${tmp}"
+        warn "写入 ${CLI_PATH} 失败，请确认权限"
+        return 0
+    fi
+    rm -f "${tmp}"
+    ok "已更新  ${CLI_PATH}"
+    note "服务端配置不受影响，无需重新部署"
+
+    if ask_yes_no "立即以新版本重新载入？" "y"; then
+        exec "${CLI_PATH}"
+    fi
+    return 0
+}
+
+
+# ============================================================
+#  6) 卸载与环境清理
 # ============================================================
 Uninstall_Hy2() {
     ui_section "卸载与环境清理"
@@ -1342,6 +1461,7 @@ show_help() {
     --quick, --fast          快速安装（自签证书，全自动无交互）
     --link,  --info          输出客户端订阅链接
     --clean                  清理 iptables 端口跳跃规则
+    --update, --upgrade      从 GitHub 拉取最新脚本并覆盖 ${CLI_PATH}
     --remove, --uninstall    卸载并清理环境
     -h, --help               显示本帮助
 
@@ -1376,6 +1496,7 @@ parse_args() {
         --remove|--uninstall)   ACTION="remove" ;;
         --link|--info)          ACTION="link" ;;
         --clean)                ACTION="clean" ;;
+        --update|--upgrade)     ACTION="update" ;;
         -h|--help)              show_help; exit 0 ;;
         -d|--domain)            ARG_DOMAIN="${2:-}";   shift ;;
         -e|--email)             ARG_EMAIL="${2:-}";    shift ;;
@@ -1431,18 +1552,21 @@ menu() {
         ui_item "2" "快速安装"   "自签证书，全自动无交互"
         ui_item "3" "订阅链接"   "查看客户端连接 URI"
         ui_item "4" "端口跳跃"   "查看 / 清理 iptables 规则"
-        ui_item "5" "卸载清理"   "移除服务与全部配置"
+        ui_item "5" "更新脚本"   "从 GitHub 拉取最新版本"
+        ui_item "6" "卸载清理"   "移除服务与全部配置"
         ui_item "0" "退出"
         echo
         ui_rule
-        ask_default choice "请选择 [0-5]：" "1"
+        # 主菜单是最顶层，输入 b 无处可退，等同于停留在本页
+        ask_default choice "请选择 [0-6]：" "1" || continue
 
         case "${choice}" in
         1) Install_Hy2 ;;
         2) Quick_Install_Hy2 ;;
         3) Read_Link ;;
         4) Clean_Iptables ;;
-        5) Uninstall_Hy2 ;;
+        5) Update_Script ;;
+        6) Uninstall_Hy2 ;;
         0) echo; ok "已退出"; exit 0 ;;
         *) warn "无效选项：${choice}"; sleep 1; continue ;;
         esac
@@ -1465,6 +1589,7 @@ main() {
     remove) Uninstall_Hy2;     exit 0 ;;
     link)   Read_Link;         exit 0 ;;
     clean)  Clean_Iptables;    exit 0 ;;
+    update) Update_Script;     exit 0 ;;
     esac
 
     menu
