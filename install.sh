@@ -9,19 +9,16 @@ set -euo pipefail
 # 自签证书仅用于快速安装与无域名场景，客户端兼容性有限。
 # ============================================================
 
-SCRIPT_VERSION="2.1"
+SCRIPT_VERSION="2.2"
 REPO_URL="https://github.com/Owenwoow/hy2-quick-install"
 RAW_URL="https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/main/install.sh"
 CLI_NAME="hy2"
 CLI_PATH="/usr/local/bin/${CLI_NAME}"
 
-# ---------- 颜色 ----------
-if [[ -t 1 ]]; then
-    C_GREEN="\033[32m"; C_YELLOW="\033[33m"; C_RED="\033[31m"
-    C_CYAN="\033[36m";  C_GRAY="\033[90m";   C_BOLD="\033[1m"; C_RESET="\033[0m"
-else
-    C_GREEN=""; C_YELLOW=""; C_RED=""; C_CYAN=""; C_GRAY=""; C_BOLD=""; C_RESET=""
-fi
+# ---------- 颜色与制表字符 ----------
+# 具体取值由 ui_detect_caps 按终端能力填充，这里只做声明
+C_GREEN=""; C_YELLOW=""; C_RED=""; C_CYAN=""; C_GRAY=""; C_BOLD=""; C_RESET=""
+UI_TL=""; UI_TR=""; UI_BL=""; UI_BR=""; UI_H=""; UI_V=""; UI_ARROW=""
 
 # ---------- 超时设置（秒） ----------
 TIMEOUT_APT_UPDATE=120
@@ -92,6 +89,35 @@ ui_init() {
     return 0
 }
 
+# 探测终端能力，决定用哪套颜色与制表字符
+#
+# 颜色用 $'...' 生成真正的 ESC 字节，而不是字面的 "\033"。字面写法只有 echo -e
+# 才会解释，printf '%s' 会把 \033[36m 原样打出来，提示符就会漏出转义序列。
+#
+# 制表字符只在 UTF-8 环境启用，且只用兼容面最广的直角框线（┌┐└┘│─）；
+# 圆角框线、Braille 点阵、对勾叉号等字符在老终端或缺字体的环境会显示成方块，
+# 因此消息前缀、转轮、箭头一律使用纯 ASCII。
+ui_detect_caps() {
+    if [[ -t 1 && "${TERM:-dumb}" != "dumb" ]]; then
+        C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'
+        C_CYAN=$'\033[36m';  C_GRAY=$'\033[90m'
+        C_BOLD=$'\033[1m';   C_RESET=$'\033[0m'
+    fi
+
+    local enc="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+    case "${enc}" in
+        *UTF-8*|*utf-8*|*UTF8*|*utf8*)
+            UI_TL='┌'; UI_TR='┐'; UI_BL='└'; UI_BR='┘'
+            UI_H='─';  UI_V='│';  UI_ARROW='->'
+            ;;
+        *)
+            UI_TL='+'; UI_TR='+'; UI_BL='+'; UI_BR='+'
+            UI_H='-';  UI_V='|';  UI_ARROW='->'
+            ;;
+    esac
+    return 0
+}
+
 # 重复字符 n 次
 ui_repeat() {
     local ch="$1" n="$2" out=""
@@ -141,58 +167,61 @@ ui_header() {
     gap=$(( inner - tw - rw - 2 ))
     (( gap < 1 )) && gap=1
 
-    printf '%b╭%s╮%b\n' "${C_CYAN}" "$(ui_repeat '─' "${inner}")" "${C_RESET}"
-    printf '%b│%b %b%s%b' "${C_CYAN}" "${C_RESET}" "${C_BOLD}" "${title}" "${C_RESET}"
+    printf '%s%s%s%s%s\n' "${C_CYAN}" "${UI_TL}" "$(ui_repeat "${UI_H}" "${inner}")" "${UI_TR}" "${C_RESET}"
+    printf '%s%s%s %s%s%s' "${C_CYAN}" "${UI_V}" "${C_RESET}" "${C_BOLD}" "${title}" "${C_RESET}"
     printf '%*s' "${gap}" ''
-    printf '%b%s%b %b│%b\n' "${C_GRAY}" "${right}" "${C_RESET}" "${C_CYAN}" "${C_RESET}"
-    printf '%b╰%s╯%b\n' "${C_CYAN}" "$(ui_repeat '─' "${inner}")" "${C_RESET}"
+    printf '%s%s%s %s%s%s\n' "${C_GRAY}" "${right}" "${C_RESET}" "${C_CYAN}" "${UI_V}" "${C_RESET}"
+    printf '%s%s%s%s%s\n' "${C_CYAN}" "${UI_BL}" "$(ui_repeat "${UI_H}" "${inner}")" "${UI_BR}" "${C_RESET}"
 }
 
 # 整行分隔线
 ui_rule() {
-    printf '%b%s%b\n' "${C_GRAY}" "$(ui_repeat '─' "${UI_W}")" "${C_RESET}"
+    printf '%s%s%s\n' "${C_GRAY}" "$(ui_repeat "${UI_H}" "${UI_W}")" "${C_RESET}"
 }
 
-# 小节标题：── 标题 ────────────
+# 小节标题：-- 标题 ------------
 ui_section() {
     local title="$1" tw rest
     tw="$(str_width "${title}")"
     rest=$(( UI_W - tw - 4 ))
     (( rest < 2 )) && rest=2
     echo
-    printf '%b──%b %b%s%b %b%s%b\n' \
-        "${C_GRAY}" "${C_RESET}" "${C_BOLD}" "${title}" "${C_RESET}" \
-        "${C_GRAY}" "$(ui_repeat '─' "${rest}")" "${C_RESET}"
+    printf '%s%s%s %s%s%s %s%s%s\n' \
+        "${C_GRAY}" "$(ui_repeat "${UI_H}" 2)" "${C_RESET}" \
+        "${C_BOLD}" "${title}" "${C_RESET}" \
+        "${C_GRAY}" "$(ui_repeat "${UI_H}" "${rest}")" "${C_RESET}"
 }
 
 # 键值对（键区固定 12 列，中文宽度感知）
 ui_kv() {
     local key="$1" value="$2" note="${3:-}"
-    printf '  %b' "${C_GRAY}"
+    printf '  %s' "${C_GRAY}"
     ui_pad "${key}" 12
-    printf '%b  %s' "${C_RESET}" "${value}"
-    [[ -n "${note}" ]] && printf '  %b%s%b' "${C_GRAY}" "${note}" "${C_RESET}"
+    printf '%s  %s' "${C_RESET}" "${value}"
+    [[ -n "${note}" ]] && printf '  %s%s%s' "${C_GRAY}" "${note}" "${C_RESET}"
     printf '\n'
 }
 
 # 菜单项
 ui_item() {
     local key="$1" name="$2" desc="${3:-}"
-    printf '  %b%s%b  ' "${C_CYAN}" "${key}" "${C_RESET}"
+    printf '  %s%s%s  ' "${C_CYAN}" "${key}" "${C_RESET}"
     ui_pad "${name}" 14
-    [[ -n "${desc}" ]] && printf '%b%s%b' "${C_GRAY}" "${desc}" "${C_RESET}"
+    [[ -n "${desc}" ]] && printf '%s%s%s' "${C_GRAY}" "${desc}" "${C_RESET}"
     printf '\n'
 }
 
 # ---------- 消息 ----------
-log()  { echo -e "  ${C_GRAY}·${C_RESET}  $*"; }
-ok()   { echo -e "  ${C_GREEN}✔${C_RESET}  $*"; }
-warn() { echo -e "  ${C_YELLOW}!${C_RESET}  $*"; }
-note() { echo -e "     ${C_GRAY}$*${C_RESET}"; }
-die()  { echo -e "  ${C_RED}✘${C_RESET}  $*" >&2; exit 1; }
+# 前缀一律用等宽的 ASCII 标签：任何终端、任何字体都能正确显示，且天然对齐。
+# 一律用 printf 而非 echo -e，避免消息内容里的反斜杠被再解释一次。
+log()  { printf '  %s[*]%s %s\n'  "${C_GRAY}"   "${C_RESET}" "$*"; }
+ok()   { printf '  %s[+]%s %s\n'  "${C_GREEN}"  "${C_RESET}" "$*"; }
+warn() { printf '  %s[!]%s %s\n'  "${C_YELLOW}" "${C_RESET}" "$*"; }
+note() { printf '      %s%s%s\n'  "${C_GRAY}"   "$*"         "${C_RESET}"; }
+die()  { printf '  %s[x]%s %s\n'  "${C_RED}"    "${C_RESET}" "$*" >&2; exit 1; }
 
 # 步骤标题
-step() { echo -e "\n  ${C_CYAN}▸${C_RESET}  ${C_BOLD}$*${C_RESET}"; }
+step() { printf '\n  %s==%s %s%s%s\n' "${C_CYAN}" "${C_RESET}" "${C_BOLD}" "$*" "${C_RESET}"; }
 
 
 # ============================================================
@@ -221,7 +250,7 @@ back_hint() {
 safe_read() {
     local __sr_name="$1" __sr_prompt="$2" __sr_value=""
 
-    if read -r -p "$(printf '  %s›%s %s' "${C_CYAN}" "${C_RESET}" "${__sr_prompt}")" __sr_value; then
+    if read -r -p "$(printf '  %s>%s %s' "${C_CYAN}" "${C_RESET}" "${__sr_prompt}")" __sr_value; then
         READ_EOF_COUNT=0
     else
         __sr_value=""
@@ -282,15 +311,15 @@ run_with_spinner() {
     local timeout_sec="$1"; shift
     local msg="$1"; shift
     local logfile="/tmp/hy2_run_$$.log"
-    # 用数组而非字符串切片：locale 非 UTF-8 时按字节切片会输出乱码
-    local spin=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    # 纯 ASCII 转轮：Braille 点阵在老终端和缺字体的环境会显示成方块
+    local spin=('-' '\' '|' '/')
     local i=0 pid exit_code
 
     timeout "${timeout_sec}" "$@" > "${logfile}" 2>&1 &
     pid=$!
 
     while kill -0 "${pid}" 2>/dev/null; do
-        printf "\r  ${C_CYAN}%s${C_RESET}  %s" "${spin[$(( i % ${#spin[@]} ))]}" "${msg}"
+        printf '\r  %s%s%s  %s' "${C_CYAN}" "${spin[$(( i % ${#spin[@]} ))]}" "${C_RESET}" "${msg}"
         i=$(( i + 1 ))          # 注意：不可写成 ((i++))，i 为 0 时返回码为 1，set -e 下会中止脚本
         sleep 0.1
     done
@@ -298,17 +327,18 @@ run_with_spinner() {
     wait "${pid}"; exit_code=$?
 
     if (( exit_code == 0 )); then
-        printf "\r  ${C_GREEN}✔${C_RESET}  %s\n" "${msg}"
+        printf '\r  %s[+]%s %s\n' "${C_GREEN}" "${C_RESET}" "${msg}"
         rm -f "${logfile}"
         return 0
     fi
 
     if (( exit_code == 124 )); then
-        printf "\r  ${C_RED}✘${C_RESET}  %s ${C_RED}(超时 %ss)${C_RESET}\n" "${msg}" "${timeout_sec}"
+        printf '\r  %s[x]%s %s %s(超时 %ss)%s\n' \
+            "${C_RED}" "${C_RESET}" "${msg}" "${C_RED}" "${timeout_sec}" "${C_RESET}"
     else
-        printf "\r  ${C_RED}✘${C_RESET}  %s\n" "${msg}"
+        printf '\r  %s[x]%s %s\n' "${C_RED}" "${C_RESET}" "${msg}"
     fi
-    echo -e "     ${C_GRAY}最后 20 行输出：${C_RESET}"
+    printf '      %s最后 20 行输出：%s\n' "${C_GRAY}" "${C_RESET}"
     tail -20 "${logfile}" 2>/dev/null | sed 's/^/     /' || true
     rm -f "${logfile}"
     return "${exit_code}"
@@ -554,7 +584,7 @@ precheck_acme_http() {
         note "若开启了 Cloudflare 代理（小黄云），HTTP-01 会失败，请改用 DNS 验证"
         has_warn=1
     else
-        ok "域名解析正常  ${DOMAIN} → ${resolved}"
+        ok "域名解析正常  ${DOMAIN} -> ${resolved}"
     fi
 
     if check_tcp_port_free 80; then
@@ -617,8 +647,8 @@ choose_cert_mode() {
 
     while true; do
         ui_section "TLS 证书方式"
-        ui_item "1" "ACME · HTTP"  "推荐。需域名解析到本机并放行 80/tcp"
-        ui_item "2" "ACME · DNS"   "Cloudflare API Token，无需 80 端口"
+        ui_item "1" "ACME - HTTP"  "推荐。需域名解析到本机并放行 80/tcp"
+        ui_item "2" "ACME - DNS"   "Cloudflare API Token，无需 80 端口"
         ui_item "3" "已有证书"     "自行上传或 acme.sh 等工具签发"
         ui_item "4" "自签证书"     "无域名时的兜底，客户端兼容性有限"
         ui_item "b" "返回"         "回到主菜单"
@@ -838,7 +868,7 @@ setup_port_hopping() {
         ok "端口跳跃规则已存在"
     else
         iptables -t nat -A PREROUTING -p udp --dport "${ipt_range}" -j REDIRECT --to-ports "${PORT}"
-        ok "端口跳跃  UDP ${MPORT} → ${PORT}"
+        ok "端口跳跃  UDP ${MPORT} -> ${PORT}"
     fi
 
     if command -v netfilter-persistent >/dev/null 2>&1; then
@@ -883,10 +913,10 @@ start_service() {
     if [[ "${CERT_MODE}" == acme-* ]]; then
         echo
         warn "证书申请失败的常见原因："
-        note "· 域名未解析到本机，或 Cloudflare 开启了代理（小黄云）"
-        note "· 80/tcp 未放行或被其他程序占用（HTTP-01 验证）"
-        note "· Cloudflare API Token 权限不足（需 Zone:DNS:Edit）"
-        note "· 同一域名短时间内申请过多，触发 Let's Encrypt 速率限制"
+        note "- 域名未解析到本机，或 Cloudflare 开启了代理（小黄云）"
+        note "- 80/tcp 未放行或被其他程序占用（HTTP-01 验证）"
+        note "- Cloudflare API Token 权限不足（需 Zone:DNS:Edit）"
+        note "- 同一域名短时间内申请过多，触发 Let's Encrypt 速率限制"
     fi
     die "服务启动失败，请查看日志：journalctl -u ${SERVICE_NAME} -e --no-pager"
 }
@@ -914,8 +944,8 @@ build_uri() {
 
 cert_mode_desc() {
     case "${CERT_MODE}" in
-    acme-http)   echo "ACME · HTTP-01（${CA_PROVIDER}）" ;;
-    acme-dns-cf) echo "ACME · Cloudflare DNS-01（${CA_PROVIDER}）" ;;
+    acme-http)   echo "ACME - HTTP-01（${CA_PROVIDER}）" ;;
+    acme-dns-cf) echo "ACME - Cloudflare DNS-01（${CA_PROVIDER}）" ;;
     manual)      echo "已有证书文件" ;;
     selfsigned)  echo "自签证书" ;;
     *)           echo "未知" ;;
@@ -935,7 +965,7 @@ print_result() {
     ui_kv "SNI" "${SNI}"
     ui_kv "节点名称" "${NODE_NAME}"
     ui_kv "伪装网站" "${FAKE_URL}"
-    [[ "${ENABLE_MPORT}" == "yes" ]] && ui_kv "端口跳跃" "${MPORT} → ${PORT}"
+    [[ "${ENABLE_MPORT}" == "yes" ]] && ui_kv "端口跳跃" "${MPORT} -> ${PORT}"
     ui_kv "证书方式" "$(cert_mode_desc)"
     [[ -n "${PIN_SHA256}" ]] && ui_kv "证书指纹" "${PIN_SHA256:0:23}..." "完整值见配置输出"
     [[ "${CERT_MODE}" == acme-* ]] && ui_kv "证书目录" "${ACME_DIR}" "自动续期"
@@ -943,7 +973,8 @@ print_result() {
     ui_kv "订阅链接" "${LINK_FILE}"
 
     ui_section "客户端连接 URI"
-    echo -e "  ${C_GREEN}${URI}${C_RESET}"
+    printf "  %s%s%s
+" "${C_GREEN}" "${URI}" "${C_RESET}"
 
     ui_section "后续操作"
     ui_kv "管理面板" "${CLI_NAME}" "随时呼出本脚本"
@@ -959,8 +990,8 @@ print_result() {
     fi
     echo
     ui_rule
-    echo -e "  ${C_GRAY}项目地址  ${REPO_URL}${C_RESET}"
-    echo -e "  ${C_GRAY}官方文档  https://v2.hysteria.network/${C_RESET}"
+    printf '  %s项目地址  %s%s\n' "${C_GRAY}" "${REPO_URL}" "${C_RESET}"
+    printf '  %s官方文档  https://v2.hysteria.network/%s\n' "${C_GRAY}" "${C_RESET}"
 }
 
 
@@ -1041,7 +1072,7 @@ ask_port_hopping() {
         MPORT="${input}"
         validate_mport "${MPORT}" || continue
         ENABLE_MPORT="yes"
-        ok "端口跳跃  ${MPORT} → ${PORT}"
+        ok "端口跳跃  ${MPORT} -> ${PORT}"
         return 0
     done
 }
@@ -1206,7 +1237,7 @@ Quick_Install_Hy2() {
     ui_kv "连接地址" "${HOST}"
     ui_kv "监听端口" "${PORT}"
     ui_kv "证书方式" "$(cert_mode_desc)"
-    [[ "${ENABLE_MPORT}" == "yes" ]] && ui_kv "端口跳跃" "${MPORT} → ${PORT}"
+    [[ "${ENABLE_MPORT}" == "yes" ]] && ui_kv "端口跳跃" "${MPORT} -> ${PORT}"
 
     install_hysteria_core
     finalize_install "快速安装完成"
@@ -1227,7 +1258,8 @@ Read_Link() {
 
     if [[ -f "${LINK_FILE}" && -s "${LINK_FILE}" ]]; then
         echo
-        echo -e "  ${C_GREEN}$(cat "${LINK_FILE}")${C_RESET}"
+        printf "  %s%s%s
+" "${C_GREEN}" "$(cat "${LINK_FILE}")" "${C_RESET}"
         echo
         return 0
     fi
@@ -1282,7 +1314,8 @@ Read_Link() {
     NODE_NAME="hy2-$(printf '%04d' $(( RANDOM % 10000 )))"
     build_uri
     echo
-    echo -e "  ${C_GREEN}${URI}${C_RESET}"
+    printf "  %s%s%s
+" "${C_GREEN}" "${URI}" "${C_RESET}"
     echo
     ok "已重新保存到 ${LINK_FILE}"
     return 0
@@ -1528,14 +1561,15 @@ parse_args() {
 # 当前部署状态，显示在菜单顶部
 status_line() {
     if ! hy2_installed; then
-        echo -e "${C_GRAY}未安装${C_RESET}"
+        printf '%s[未安装]%s' "${C_GRAY}" "${C_RESET}"
         return 0
     fi
     if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
-        echo -e "${C_GREEN}● 运行中${C_RESET}"
+        printf '%s[运行中]%s' "${C_GREEN}" "${C_RESET}"
     else
-        echo -e "${C_RED}● 已停止${C_RESET}"
+        printf '%s[已停止]%s' "${C_RED}" "${C_RESET}"
     fi
+    return 0
 }
 
 menu() {
@@ -1580,6 +1614,8 @@ menu() {
 #  入口
 # ============================================================
 main() {
+    # 必须先探测终端能力：颜色与制表字符在此之前都是空串，任何提前的输出都会失色
+    ui_detect_caps
     ui_init
     parse_args "$@"
     check_root
