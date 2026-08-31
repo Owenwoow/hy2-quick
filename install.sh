@@ -9,7 +9,7 @@ set -euo pipefail
 # 自签证书仅用于快速安装与无域名场景，客户端兼容性有限。
 # ============================================================
 
-SCRIPT_VERSION="2.3"
+SCRIPT_VERSION="2.3.0"
 REPO_URL="https://github.com/Owenwoow/hy2-quick-install"
 RAW_URL="https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/main/install.sh"
 CLI_NAME="hy2"

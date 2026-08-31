@@ -31,7 +31,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/m
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Hysteria 2 一键部署脚本                              v2.3 │
+│ Hysteria 2 一键部署脚本                           v2.3.0 │
 └──────────────────────────────────────────────────────────┘
 
   当前状态      [运行中]
