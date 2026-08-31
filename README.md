@@ -7,205 +7,186 @@
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
 </div>
 
-> **项目地址**: [https://github.com/Owenwoow/hy2-quick-install](https://github.com/Owenwoow/hy2-quick-install)
+> **项目地址**：[https://github.com/Owenwoow/hy2-quick-install](https://github.com/Owenwoow/hy2-quick-install)
 
-为您带来极为简洁、稳定且功能完善的 **Hysteria 2** 服务端一键自动化部署工具。
-
-> **⚠️ 重要变更（证书策略升级）**
->
-> 脚本已由**自签证书**切换为 **ACME 自动申请受信任证书**。
-> 原因：Xray-core 自 `v26.2.6` 起移除了用于跳过证书校验的 `allowInsecure`，并于 **2026-08-01** 起彻底停用；
-> 依赖 `insecure=1` 的自签节点在 v2rayN 等基于 Xray 的客户端上已无法连接。
-> 参考：[v2rayN 官方说明](https://github.com/2dust/v2rayN/discussions/9460)
->
-> 老版本部署的自签节点建议重新执行一次安装，改用 ACME 方式。
+简洁、稳定的 **Hysteria 2** 服务端一键部署工具。支持 ACME 自动申请受信任证书，安装后可用 `hy2` 命令随时呼出管理面板。
 
 
-## ⚙️ 系统要求
-
-- 操作系统：`Debian 10+` / `Ubuntu 18.04+`（暂不支持 CentOS 等红帽系系统）
-- `root` 用户执行
-- 确保服务商面板（安全组 / 防火墙）已放行对应的 **UDP** 端口及跳跃区间端口
-- **一个已解析到本机的域名**（ACME 申请证书必需）
-- 使用 HTTP-01 验证时，还需放行 **80/tcp** 且该端口未被 nginx/apache 等占用
-
-
-## 🚀 安装指南
-
-### 方法一：单行命令部署（推荐）
-
-登录 VPS 后直接执行：
+## 快速开始
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Owenwoow/hy2-quick-install/main/install.sh)
 ```
 
-> 若提示 `curl` 不存在，请先执行 `apt update && apt install curl -y`
+安装完成后，以后直接输入 `hy2` 即可再次打开管理面板。
 
-### 方法二：手动克隆仓库
+> 请使用 `bash <(curl ...)` 形式，不要用 `curl ... | bash` —— 后者会占用标准输入，导致脚本无法交互。
+
+
+## 系统要求
+
+- `Debian 10+` / `Ubuntu 18.04+`，以 `root` 用户执行
+- 服务商安全组放行 **UDP** 监听端口及端口跳跃区间
+- 若使用 ACME 申请证书：需要一个**已解析到本机的域名**；HTTP 验证方式还需放行 **80/tcp**
+
+
+## 选择哪种安装方式
+
+| | 自定义安装 | 快速安装 |
+|---|---|---|
+| 证书 | ACME 受信任证书 / 已有证书 / 自签 | **自签证书** |
+| 交互 | 逐项配置 | 全自动，零输入 |
+| 客户端兼容性 | 好 | **有限** |
+| 需要域名 | 是（自签除外） | 否 |
+
+**推荐使用「自定义安装」并填写域名与邮箱申请 ACME 证书。**
+
+快速安装使用自签证书，虽然一条命令即可装完，但客户端兼容性有限：Xray-core 自 `v26.2.6` 起移除了用于跳过证书校验的 `allowInsecure`，并从 **2026-08-01** 起彻底停用（[v2rayN 官方说明](https://github.com/2dust/v2rayN/discussions/9460)），**v2rayN 等基于 Xray 的客户端可能无法连接**。脚本会在链接中附带 `pinSHA256` 证书指纹作为替代方案，但并非所有客户端都支持。
+
+给快速安装加上 `-d 域名` 即可改用 ACME 申请受信任证书：
 
 ```bash
-git clone https://github.com/Owenwoow/hy2-quick-install.git
-cd hy2-quick-install
-chmod +x install.sh
-bash install.sh
+hy2 --quick -d hy2.example.com
 ```
 
 
-## 🛠️ 脚本操作菜单
-
-执行脚本后将自动清屏并展示全屏 TUI 风格菜单（自适应终端宽度）：
+## 管理面板
 
 ```text
-══════════════════════════════════════════════════════════════
-  Hysteria 2 一键部署脚本  |  作者: Owen_W
-  项目: https://github.com/Owenwoow/hy2-quick-install
-══════════════════════════════════════════════════════════════
+╭──────────────────────────────────────────────────────────╮
+│ Hysteria 2 一键部署脚本                              v2.0 │
+╰──────────────────────────────────────────────────────────╯
 
-  1) 自定义安装
-  2) 卸载/环境清理
-  3) 清理端口跳跃规则
-  4) 读取订阅链接
-  5) 快速安装
-  0) 退出脚本
+  当前状态      ● 运行中
 
-══════════════════════════════════════════════════════════════
-请输入选项 [0-5] (直接回车 = 默认 1):
+  1  自定义安装    选择证书方式，逐项配置
+  2  快速安装      自签证书，全自动无交互
+  3  订阅链接      查看客户端连接 URI
+  4  端口跳跃      查看 / 清理 iptables 规则
+  5  卸载清理      移除服务与全部配置
+  0  退出
 ```
 
-| 选项 | 功能说明 |
-|------|---------|
-| `1` | **自定义安装**：安装依赖 → 选择证书方式 → 交互配置 → 启动服务 → 输出客户端 URI |
-| `2` | 卸载并清理所有配置、证书、ACME 缓存、服务文件及 sysctl 优化 |
-| `3` | 单独管理 iptables 端口跳跃规则（查看 / 按行号删除） |
-| `4` | **读取订阅链接**：直接输出已保存的客户端 URI；若缓存不存在则自动从配置重新生成 |
-| `5` | **快速安装**：除域名外全部使用默认值，适合极速部署环境 |
-| `0` | 退出脚本 |
 
+## TLS 证书方式
 
-## 🔐 TLS 证书方式
-
-自定义安装时会让你选择证书来源：
+自定义安装时可选四种证书来源：
 
 | 方式 | 适用场景 | 前提条件 |
 |------|---------|---------|
-| **1) ACME · HTTP-01**（推荐） | 有域名、80 端口可用 | 域名 A 记录指向本机；放行 80/tcp 且未被占用；**不可开启 Cloudflare 小黄云代理** |
-| **2) ACME · Cloudflare DNS-01** | 80 端口不可用，或域名走 CDN 代理 | Cloudflare API Token（需 `Zone:DNS:Edit` 权限） |
-| **3) 使用已有证书文件** | 已用 acme.sh 等工具签发过证书 | 提供 `.crt` / `.key` 的绝对路径 |
-| **4) 自签证书** | **不推荐**，仅无域名时兜底 | 无 |
+| **ACME · HTTP-01**（推荐） | 有域名、80 端口可用 | 域名 A 记录指向本机；放行 80/tcp 且未被占用；**不可开启 Cloudflare 小黄云代理** |
+| **ACME · Cloudflare DNS-01** | 80 端口不可用，或域名走 CDN 代理 | Cloudflare API Token（需 `Zone:DNS:Edit` 权限） |
+| **已有证书文件** | 已用 acme.sh 等工具签发过证书 | `.crt` / `.key` 的绝对路径 |
+| **自签证书** | 无域名时的兜底 | 无 |
 
-关于各方式的细节，可参考 Hysteria 2 官方文档的
-[ACME 配置](https://v2.hysteria.network/zh/docs/advanced/Full-Server-Config/)
-与 [ACME DNS 验证](https://v2.hysteria.network/zh/docs/advanced/ACME-DNS-Config/)。
+证书由 Hysteria 内置 ACME 客户端申请并**自动续期**，存放于 `/var/lib/hysteria/acme`，无需额外配置 cron。HTTP-01 的续期同样走 80 端口，请保持该端口长期放行。
 
-**几点说明：**
+**客户端不需要导入任何证书文件。** Let's Encrypt 是公共受信任 CA，根证书已预装在各操作系统中，客户端用域名连接即可通过标准 TLS 校验。只有自签证书才需要客户端跳过校验或固定指纹。
 
-- 证书由 Hysteria 内置 ACME 客户端自动申请与**自动续期**，无需额外配置 cron。
-- 证书存放于 `/var/lib/hysteria/acme`，配置写在 `/etc/hysteria/config.yaml`。
-- HTTP-01 的续期同样走 80 端口，请保持该端口**长期放行且不被占用**。
-- 选择自签证书时，脚本会计算证书 SHA256 指纹并在 URI 中输出 `pinSHA256=...`
-  （证书固定，Xray 官方推荐的 `allowInsecure` 替代方案），但部分客户端仍可能无法连接。
+配置细节参见官方文档：[ACME 配置](https://v2.hysteria.network/zh/docs/advanced/Full-Server-Config/) · [ACME DNS 验证](https://v2.hysteria.network/zh/docs/advanced/ACME-DNS-Config/)
 
 
-## 🔧 高级：命令行参数
-
-脚本支持非交互式直接调用，方便配合自动化工具或脚本使用：
+## 命令行参数
 
 ```bash
-bash install.sh --help
+hy2 --help
 ```
 
 **动作**
 
 | 参数 | 说明 |
 |------|------|
-| `--quick` / `--fast` | 快速安装（除必要信息外全部使用默认值） |
-| `--link` / `--info` | 输出已保存的客户端订阅链接 |
-| `--clean` | 单独清理 iptables 端口跳跃规则 |
+| `--quick` / `--fast` | 快速安装（自签证书，全自动无交互） |
+| `--link` / `--info` | 输出客户端订阅链接 |
+| `--clean` | 清理 iptables 端口跳跃规则 |
 | `--remove` / `--uninstall` | 卸载并清理环境 |
 | `-h` / `--help` | 显示帮助 |
 
-**证书选项**（配合 `--quick`）
+**证书选项**（配合 `--quick`；不指定域名时默认自签）
 
 | 参数 | 说明 |
 |------|------|
-| `-d`, `--domain <域名>` | 申请证书用的域名，必须已解析到本机 |
+| `-d`, `--domain <域名>` | 指定域名后改用 ACME HTTP-01 申请受信任证书 |
 | `-e`, `--email <邮箱>` | ACME 联系邮箱，默认 `admin@<域名>` |
-| `--cf-token <Token>` | Cloudflare API Token，指定后改用 DNS-01 验证 |
+| `--cf-token <Token>` | Cloudflare API Token，改用 DNS-01 验证 |
 | `--ca <letsencrypt\|zerossl>` | 证书颁发机构，默认 `letsencrypt` |
-| `--self-signed` | 使用自签证书（不受信任，仅作兜底） |
+| `--self-signed` | 强制使用自签证书 |
 
 **其他选项**（配合 `--quick`）
 
 | 参数 | 说明 |
 |------|------|
 | `-p`, `--port <端口>` | 监听端口，默认 `443` |
-| `-k`, `--password <密码>` | 连接密码，默认随机生成 20 位 |
-| `-m`, `--mport <范围\|off>` | UDP 端口跳跃范围，默认 `20000-20100`，`off` 表示不启用 |
+| `-k`, `--password <密码>` | 连接密码，默认随机 20 位 |
+| `-m`, `--mport <范围\|off>` | 端口跳跃范围，默认 `20000-20100` |
 | `--masquerade <URL>` | 伪装网站，默认 `https://www.bing.com` |
 | `-n`, `--name <节点名>` | 节点名称，默认随机生成 |
 
 **示例**
 
 ```bash
-# HTTP-01 验证，全自动无交互
-bash install.sh --quick -d hy2.example.com -e me@example.com
+hy2 --quick -d hy2.example.com -e me@example.com
 ```
 
 ```bash
-# Cloudflare DNS-01 验证，无需放行 80 端口
-bash install.sh --quick -d hy2.example.com --cf-token cf_xxx
+hy2 --quick -d hy2.example.com --cf-token cf_xxx -p 8443
 ```
 
-```bash
-# 自定义端口与跳跃范围
-bash install.sh --quick -d hy2.example.com -p 8443 -m 30000-31000
-```
 
-```bash
-# 读取已保存的订阅链接
-bash install.sh --link
-```
+## 故障排查
 
-```bash
-# 卸载并清理环境
-bash install.sh --remove
-```
-
-> `--quick` 若未通过 `-d` 指定域名，脚本只会交互询问域名这一项，其余全部使用默认值。
-
-
-## 🩺 证书申请失败排查
-
-服务启动失败时优先查看日志：
+服务异常时先看日志：
 
 ```bash
 journalctl -u hysteria-server.service -e --no-pager
 ```
 
-常见原因：
+**证书申请失败**
 
-- 域名未解析到本机，或 Cloudflare 开启了代理（小黄云）——HTTP-01 会失败，请改用 DNS-01
-- 80/tcp 未放行，或被 nginx/apache 占用
+- 域名未解析到本机，或 Cloudflare 开启了代理（小黄云）—— HTTP-01 会失败，改用 DNS-01
+- 80/tcp 未放行，或被 nginx / apache 占用
 - Cloudflare API Token 权限不足（需 `Zone:DNS:Edit`）
-- 同一域名短时间内申请过多，触发 Let's Encrypt 速率限制（可改用 `--ca zerossl`）
+- 触发 Let's Encrypt 速率限制，可改用 `--ca zerossl`
 
-## 🙏 鸣谢
+**服务正常但客户端连不上**
 
-- **[Hysteria](https://github.com/apernet/hysteria)**：由 Apernet 团队开发的高性能网络协议，是本脚本的运行核心。
+在服务器本地自测，可区分「服务端问题」还是「网络 / 客户端问题」：
+
+```bash
+cat > /tmp/hy2-test.yaml <<'EOF'
+server: 你的域名:443
+auth: 你的密码
+socks5:
+  listen: 127.0.0.1:10808
+EOF
+hysteria client -c /tmp/hy2-test.yaml & sleep 5
+curl -x socks5h://127.0.0.1:10808 --max-time 15 -sI https://www.cloudflare.com | head -1
+```
+
+本地能通说明服务端正常，问题在客户端或链路：确认客户端内核支持 Hysteria2（**Xray-core 不支持**，v2rayN 需装 sing-box 内核）、云厂商安全组已放行 UDP、域名 DNS 缓存已刷新。
 
 
-## ⚠️ 免责声明
+## 文件位置
 
-- 本项目仅供个人学习、技术研究及网络环境测试使用。
-- 使用前请了解并遵守所在国家和地区的法律法规及云服务商的使用条款。
-- 对于使用本脚本产生的任何风险、损失或不当行为，作者概不负责。**使用即表示您已阅读、理解并接受本声明。**
+| 路径 | 说明 |
+|------|------|
+| `/etc/hysteria/config.yaml` | 服务端配置 |
+| `/etc/hysteria/link.bak` | 客户端订阅链接 |
+| `/var/lib/hysteria/acme/` | ACME 证书与账户密钥 |
+| `/usr/local/bin/hy2` | 管理面板快捷命令 |
 
 
-## 📄 参与与支持
+## 鸣谢
 
-如果本项目对您有帮助，请点击右上角 **⭐ Star** 支持！您的鼓励是持续维护的动力！
+- **[Hysteria](https://github.com/apernet/hysteria)** — Apernet 团队开发的高性能网络协议，本脚本的运行核心
+
+
+## 免责声明
+
+本项目仅供个人学习、技术研究及网络环境测试使用。使用前请了解并遵守所在国家和地区的法律法规及云服务商的使用条款。对于使用本脚本产生的任何风险、损失或不当行为，作者概不负责。**使用即表示您已阅读、理解并接受本声明。**
+
 
 <div align="center">
-  <sub>Made with ❤️ by <b>Owen_W</b>. </sub>
+  <sub>如果这个项目对你有帮助，欢迎点个 ⭐ Star</sub><br>
+  <sub>Made with ❤️ by <b>Owen_W</b></sub>
 </div>
